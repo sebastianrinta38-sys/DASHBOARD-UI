@@ -1,0 +1,6 @@
+{
+  "name": "Dashboard de Ventas y Anuncios",
+  "description": "Dashboard para control de ventas de infoproductos de carpintería vía WhatsApp y retorno de publicidad (ROAS) en múltiples países de LATAM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
