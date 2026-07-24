@@ -14,7 +14,8 @@ import {
   LogOut,
   Hammer,
   TrendingUp,
-  Globe
+  Globe,
+  PiggyBank
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -30,6 +31,7 @@ export default function Sidebar({ activeTab, setActiveTab, userEmail }: SidebarP
     { id: 'bots', label: '3. Rendimiento Bots Leona', icon: Bot, disabled: false },
     { id: 'ads', label: '4. Meta Ads & ROAS', icon: Megaphone, disabled: false },
     { id: 'ledger', label: 'Registro de Ventas', icon: Receipt, disabled: false },
+    { id: 'accounting', label: 'Datos Contables', icon: PiggyBank, disabled: false },
   ];
 
   return (

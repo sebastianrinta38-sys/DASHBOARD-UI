@@ -11,8 +11,8 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-import { supabaseServer, supabaseAdmin } from './src/db/index';
-import { insertVentaSchema, updateVentaSchema } from './src/db/schema';
+import { supabaseServer, supabaseAdmin } from './src/db/index.js';
+import { insertVentaSchema, updateVentaSchema } from './src/db/schema.js';
 
 const app = express();
 app.use(express.json());

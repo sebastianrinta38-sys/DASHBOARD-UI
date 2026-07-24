@@ -67,6 +67,7 @@ export function useDashboardData() {
     conversions: c.conversiones,
     status: c.estado,
     paisId: c.pais_id,
+    fecha: c.fecha,
   }));
 
   const products: Product[] = (query.data?.productos || []).map(p => ({

@@ -8,6 +8,7 @@ import MetaAdsView from './components/MetaAdsView';
 import SalesLedger from './components/SalesLedger';
 import CreateSaleModal from './components/CreateSaleModal';
 import CatalogManagement from './components/CatalogManagement';
+import AccountingDataView from './components/AccountingDataView';
 import { Sale, AdCampaign, FilterState, Product } from './types';
 import { useDashboardData } from './hooks/useDashboardData';
 import { CheckCircle2, AlertTriangle, Info, Plus, X, Database } from 'lucide-react';
@@ -231,7 +232,9 @@ export default function App() {
                 {activeTab === 'dashboard' && 'Nivel 1 — Resumen General Consolidado'}
                 {activeTab === 'country' && 'Nivel 2 — Detalle por País'}
                 {activeTab === 'bots' && 'Nivel 3 — Rendimiento de Bots Leona'}
+                {activeTab === 'ads' && 'Nivel 4 — Meta Ads & ROAS'}
                 {activeTab === 'ledger' && 'Registro General de Ventas'}
+                {activeTab === 'accounting' && 'Datos Contables y Ahorro Sugerido'}
                 {activeTab === 'catalog' && 'Gestión de Países y Conversiones'}
               </h2>
               <p className="text-xs text-gray-400 font-mono mt-1 flex items-center gap-2">
@@ -239,7 +242,9 @@ export default function App() {
                   {activeTab === 'dashboard' && 'Visión unificada de facturación y métricas globales en USD'}
                   {activeTab === 'country' && 'Análisis en moneda local y desglose aislado por tipo de venta'}
                   {activeTab === 'bots' && 'Comparativa de conversión y ventas por país via Bot Leona'}
+                  {activeTab === 'ads' && 'Análisis de ROAS, gasto por anuncio y retorno publicitario'}
                   {activeTab === 'ledger' && 'Historial trazable de pagos y clientes de WhatsApp'}
+                  {activeTab === 'accounting' && 'Cálculo consolidado de ingresos, gasto publicitario, utilidad diaria y fondo de ahorro sugerido (30%)'}
                   {activeTab === 'catalog' && 'Configuración de tasas de cambio por país'}
                 </span>
                 <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
@@ -326,6 +331,16 @@ export default function App() {
               onOpenCreateModal={handleOpenCreateModal}
               onEditSale={handleOpenEditModal}
               onDeleteSale={handleDeleteSale}
+            />
+          )}
+
+          {/* Datos Contables y Ahorro Sugerido (30%) */}
+          {activeTab === 'accounting' && (
+            <AccountingDataView 
+              sales={sales}
+              campaigns={campaigns}
+              filters={filters}
+              setFilters={setFilters}
             />
           )}
 
