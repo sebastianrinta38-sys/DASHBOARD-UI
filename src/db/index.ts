@@ -21,11 +21,6 @@ const clientOptions = {
     persistSession: false,
     autoRefreshToken: false,
   },
-  realtime: {
-    params: {
-      eventsPerSecond: 0,
-    },
-  },
 };
 
 // CLIENTE 1: Cliente Público (Publishable / Anon Key)

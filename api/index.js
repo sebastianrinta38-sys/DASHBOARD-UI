@@ -149,11 +149,6 @@ var clientOptions = {
   auth: {
     persistSession: false,
     autoRefreshToken: false
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 0
-    }
   }
 };
 var supabasePublic = createClient(supabaseUrl, anonKey, clientOptions);
