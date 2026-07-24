@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-import * as schema from './schema';
+import * as schema from './schema.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -16,16 +16,23 @@ if (!serviceRoleKey) {
   console.log('✅ [SUPABASE SERVER]: SUPABASE_SERVICE_ROLE_KEY cargada correctamente en el servidor.');
 }
 
-// CLIENTE 1: Cliente Público (Publishable / Anon Key)
-export const supabasePublic = createClient(supabaseUrl, anonKey);
-
-// CLIENTE 2: Cliente Admin de Servidor (Service Role Key para bypass de RLS)
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey || anonKey, {
+const clientOptions = {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
   },
-});
+  realtime: {
+    params: {
+      eventsPerSecond: 0,
+    },
+  },
+};
+
+// CLIENTE 1: Cliente Público (Publishable / Anon Key)
+export const supabasePublic = createClient(supabaseUrl, anonKey, clientOptions);
+
+// CLIENTE 2: Cliente Admin de Servidor (Service Role Key para bypass de RLS)
+export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey || anonKey, clientOptions);
 
 export const supabaseServer = supabaseAdmin;
 export { schema };

@@ -145,13 +145,19 @@ if (!serviceRoleKey) {
 } else {
   console.log("\u2705 [SUPABASE SERVER]: SUPABASE_SERVICE_ROLE_KEY cargada correctamente en el servidor.");
 }
-var supabasePublic = createClient(supabaseUrl, anonKey);
-var supabaseAdmin = createClient(supabaseUrl, serviceRoleKey || anonKey, {
+var clientOptions = {
   auth: {
     persistSession: false,
     autoRefreshToken: false
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 0
+    }
   }
-});
+};
+var supabasePublic = createClient(supabaseUrl, anonKey, clientOptions);
+var supabaseAdmin = createClient(supabaseUrl, serviceRoleKey || anonKey, clientOptions);
 var supabaseServer = supabaseAdmin;
 
 // server.ts
