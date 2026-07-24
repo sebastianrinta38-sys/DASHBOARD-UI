@@ -7,7 +7,6 @@ import React, { useState, useMemo } from 'react';
 import { 
   PiggyBank, 
   TrendingUp, 
-  TrendingDown, 
   Calendar, 
   Download, 
   HelpCircle, 
@@ -15,8 +14,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Wallet,
-  ShieldCheck,
-  Coins
+  Coins,
+  Building2,
+  Wrench
 } from 'lucide-react';
 import { Sale, AdCampaign, FilterState, CountryConfig } from '../types';
 import { 
@@ -53,7 +53,7 @@ export default function AccountingDataView({
     return getActiveCurrencyConfig(selectedCurrency, countriesConfig);
   }, [selectedCurrency, countriesConfig]);
 
-  // Local date range state initialized from global filters (defaulting to current month / July 2026)
+  // Local date range state for Historical table initialized from global filters (defaulting to July 2026)
   const [localStartDate, setLocalStartDate] = useState<string>(filters.startDate || '2026-07-01');
   const [localEndDate, setLocalEndDate] = useState<string>(filters.endDate || '2026-07-31');
 
@@ -66,9 +66,13 @@ export default function AccountingDataView({
     return `${year}-${month}-${day}`;
   }, []);
 
-  // Today's Date formatted nicely (e.g. "Viernes, 24 de Julio 2026")
-  const todayFormattedText = useMemo(() => {
-    const parts = todayStr.split('-');
+  // Specific Day Selector for Main Card (defaults to Today)
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+
+  // Selected Date formatted nicely (e.g. "Viernes, 24 de Julio 2026")
+  const selectedDateFormattedText = useMemo(() => {
+    if (!selectedDate) return '';
+    const parts = selectedDate.split('-');
     if (parts.length === 3) {
       const year = parseInt(parts[0], 10);
       const monthIdx = parseInt(parts[1], 10) - 1;
@@ -81,8 +85,8 @@ export default function AccountingDataView({
         day: 'numeric'
       });
     }
-    return todayStr;
-  }, [todayStr]);
+    return selectedDate;
+  }, [selectedDate]);
 
   // Map of date -> total sales in USD (consolidado global, todos los países)
   const salesByDateMap = useMemo(() => {
@@ -109,12 +113,16 @@ export default function AccountingDataView({
   }, [campaigns]);
 
   // ==========================================
-  // VISTA 1 — HOY (Valores base en USD)
+  // VISTA 1 — TARJETA PRINCIPAL (Día Seleccionado)
   // ==========================================
-  const todayIngresosUsd = salesByDateMap.get(todayStr) || 0;
-  const todayGastoUsd = spendByDateMap.get(todayStr) || 0;
-  const todayUtilidadUsd = todayIngresosUsd - todayGastoUsd;
-  const todayAhorroSugeridoUsd = Math.max(0, todayUtilidadUsd * 0.30);
+  const selectedIngresosUsd = salesByDateMap.get(selectedDate) || 0;
+  const selectedGastoUsd = spendByDateMap.get(selectedDate) || 0;
+  const selectedUtilidadUsd = selectedIngresosUsd - selectedGastoUsd;
+  const selectedAhorroUsd = Math.max(0, selectedUtilidadUsd * 0.30);
+  const selectedCapitalUsd = Math.max(0, selectedUtilidadUsd * 0.50);
+  const selectedHerramientasUsd = Math.max(0, selectedUtilidadUsd * 0.20);
+
+  const isTodaySelected = selectedDate === todayStr;
 
   // ==========================================
   // VISTA 2 — HISTÓRICO (Días consolidados en USD)
@@ -142,14 +150,18 @@ export default function AccountingDataView({
       const ingresosUsd = salesByDateMap.get(dateStr) || 0;
       const gastoUsd = spendByDateMap.get(dateStr) || 0;
       const utilidadUsd = ingresosUsd - gastoUsd;
-      const ahorroSugeridoUsd = Math.max(0, utilidadUsd * 0.30);
+      const ahorroUsd = Math.max(0, utilidadUsd * 0.30);
+      const capitalUsd = Math.max(0, utilidadUsd * 0.50);
+      const herramientasUsd = Math.max(0, utilidadUsd * 0.20);
 
       return {
         dateStr,
         ingresosUsd,
         gastoUsd,
         utilidadUsd,
-        ahorroSugeridoUsd,
+        ahorroUsd,
+        capitalUsd,
+        herramientasUsd,
       };
     });
 
@@ -166,10 +178,12 @@ export default function AccountingDataView({
         acc.ingresosUsd += day.ingresosUsd;
         acc.gastoUsd += day.gastoUsd;
         acc.utilidadUsd += day.utilidadUsd;
-        acc.ahorroSugeridoUsd += day.ahorroSugeridoUsd;
+        acc.ahorroUsd += day.ahorroUsd;
+        acc.capitalUsd += day.capitalUsd;
+        acc.herramientasUsd += day.herramientasUsd;
         return acc;
       },
-      { ingresosUsd: 0, gastoUsd: 0, utilidadUsd: 0, ahorroSugeridoUsd: 0 }
+      { ingresosUsd: 0, gastoUsd: 0, utilidadUsd: 0, ahorroUsd: 0, capitalUsd: 0, herramientasUsd: 0 }
     );
   }, [historicalDays]);
 
@@ -205,8 +219,10 @@ export default function AccountingDataView({
       'Fecha', 
       `Ingresos (${activeCurrencyConfig.code})`, 
       `Gasto (${activeCurrencyConfig.code})`, 
-      `Utilidad (${activeCurrencyConfig.code})`, 
-      `Ahorro Sugerido 30% (${activeCurrencyConfig.code})`
+      `Utilidad Total (${activeCurrencyConfig.code})`, 
+      `Ahorro 30% (${activeCurrencyConfig.code})`,
+      `Capital Negocio 50% (${activeCurrencyConfig.code})`,
+      `Herramientas y Sueldos 20% (${activeCurrencyConfig.code})`
     ];
 
     const rows = historicalDays.map(d => [
@@ -214,7 +230,9 @@ export default function AccountingDataView({
       (d.ingresosUsd * activeCurrencyConfig.rate).toFixed(2),
       (d.gastoUsd * activeCurrencyConfig.rate).toFixed(2),
       (d.utilidadUsd * activeCurrencyConfig.rate).toFixed(2),
-      (d.ahorroSugeridoUsd * activeCurrencyConfig.rate).toFixed(2),
+      (d.ahorroUsd * activeCurrencyConfig.rate).toFixed(2),
+      (d.capitalUsd * activeCurrencyConfig.rate).toFixed(2),
+      (d.herramientasUsd * activeCurrencyConfig.rate).toFixed(2),
     ]);
     
     rows.push([
@@ -222,7 +240,9 @@ export default function AccountingDataView({
       (historicalTotalsUsd.ingresosUsd * activeCurrencyConfig.rate).toFixed(2),
       (historicalTotalsUsd.gastoUsd * activeCurrencyConfig.rate).toFixed(2),
       (historicalTotalsUsd.utilidadUsd * activeCurrencyConfig.rate).toFixed(2),
-      (historicalTotalsUsd.ahorroSugeridoUsd * activeCurrencyConfig.rate).toFixed(2),
+      (historicalTotalsUsd.ahorroUsd * activeCurrencyConfig.rate).toFixed(2),
+      (historicalTotalsUsd.capitalUsd * activeCurrencyConfig.rate).toFixed(2),
+      (historicalTotalsUsd.herramientasUsd * activeCurrencyConfig.rate).toFixed(2),
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -238,32 +258,57 @@ export default function AccountingDataView({
   return (
     <div id="accounting-data-view" className="space-y-8 animate-fadeIn">
       
-      {/* VISTA 1 — HOY: Tarjeta Destacada Ahorro Sugerido */}
-      <section id="vista-1-hoy" className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#121624] via-[#161b2e] to-[#0e121d] border border-[#262c45] p-6 sm:p-8 shadow-2xl">
+      {/* VISTA 1 — TARJETA PRINCIPAL CON SELECTOR DE FECHA */}
+      <section id="vista-1-dia" className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#121624] via-[#161b2e] to-[#0e121d] border border-[#262c45] p-6 sm:p-8 shadow-2xl">
         {/* Glow effect decorations */}
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
+        {/* Section Header */}
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-[#21273e]">
           <div>
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> HOY EN TIEMPO REAL
+                <Sparkles className="w-3.5 h-3.5" /> ANÁLISIS DIARIO CONTABLE
               </span>
-              <span className="text-xs font-mono text-gray-400 flex items-center gap-1 capitalize">
-                <Calendar className="w-3.5 h-3.5 text-gray-500" /> {todayFormattedText}
+              <span className="text-xs font-mono text-gray-300 flex items-center gap-1 capitalize bg-[#1b2034] px-2.5 py-1 rounded-lg border border-[#2d3654]">
+                <Calendar className="w-3.5 h-3.5 text-blue-400" /> {selectedDateFormattedText}
               </span>
             </div>
             <h3 className="text-xl font-display font-bold text-white tracking-tight">
-              Cálculo de Ahorro Sugerido del Día
+              Desglose de Fondos y Utilidad del Día
             </h3>
             <p className="text-xs text-gray-400 mt-1 max-w-xl">
-              Fondo de reserva estratégico del 30% reservado sobre la utilidad nula o positiva de hoy (Consolidado Global todos los países).
+              Selecciona una fecha para visualizar y recalcular los ingresos, gastos, utilidad total y distribución táctica de fondos (Consolidado Global).
             </p>
           </div>
 
-          {/* Reference Currency Selector Control */}
-          <div className="flex items-center gap-3">
+          {/* Date Selector & Reference Currency Selector */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Specific Day Selector Input */}
+            <div className="flex items-center gap-2 bg-[#1b2034] px-3.5 py-2 rounded-xl border border-[#2d3654] shadow-md">
+              <Calendar className="w-4 h-4 text-blue-400" />
+              <span className="text-xs font-mono text-gray-400 font-semibold uppercase">FECHA:</span>
+              <input
+                id="accounting-single-date-select"
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-transparent text-white text-xs font-mono font-bold focus:outline-none cursor-pointer"
+              />
+              {!isTodaySelected && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className="ml-1 text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-all cursor-pointer"
+                  title="Volver al día de hoy"
+                >
+                  Ir a Hoy
+                </button>
+              )}
+            </div>
+
+            {/* Reference Currency Selector Control */}
             <div className="flex items-center gap-2 bg-[#1b2034] px-3.5 py-2 rounded-xl border border-[#2d3654] shadow-md">
               <Coins className="w-4 h-4 text-amber-400" />
               <span className="text-xs font-mono text-gray-400 font-semibold uppercase">MONEDA:</span>
@@ -280,110 +325,140 @@ export default function AccountingDataView({
                 ))}
               </select>
             </div>
+          </div>
+        </div>
 
-            {/* Badge indicator */}
-            <div className="hidden sm:flex items-center gap-2 bg-[#1b2034] px-4 py-2 rounded-xl border border-[#2d3654]">
-              <ShieldCheck className="w-5 h-5 text-emerald-400" />
-              <div className="text-left">
-                <p className="text-[10px] font-mono text-gray-400 uppercase">Regla de Reserva</p>
-                <p className="text-xs font-bold text-emerald-400 font-mono">30% de Utilidad Diaria</p>
+        {/* CONTEXT DATA BASE (Ingresos & Gasto del día seleccionado) */}
+        <div className="relative z-10 mt-6 bg-[#141827] rounded-xl p-4 border border-[#23293f]">
+          <div className="flex items-center justify-between mb-3 border-b border-[#1f253a] pb-2">
+            <span className="text-xs font-mono font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+              Datos Base de Origen ({selectedDate})
+            </span>
+            <span className="text-[10px] font-mono text-gray-500">
+              {activeCurrencyConfig.code === 'USD' ? 'Valores base en USD' : `Convertido a ${activeCurrencyConfig.code}`}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Ingresos del día */}
+            <div className="bg-[#0d101a] rounded-lg p-3 border border-[#1f253a] flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-mono text-gray-400 flex items-center gap-1 mb-1">
+                  <ArrowUpRight className="w-3.5 h-3.5 text-blue-400" /> Ingresos del Día
+                </div>
+                <div className="text-xl font-bold font-display text-white">
+                  {formatConvertedMoney(selectedIngresosUsd, activeCurrencyConfig)}
+                </div>
               </div>
+              <span className="text-[10px] font-mono text-gray-500">Suma Ventas</span>
+            </div>
+
+            {/* Gasto del día */}
+            <div className="bg-[#0d101a] rounded-lg p-3 border border-[#1f253a] flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-mono text-gray-400 flex items-center gap-1 mb-1">
+                  <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" /> Gasto del Día
+                </div>
+                <div className="text-xl font-bold font-display text-rose-400">
+                  {formatConvertedMoney(selectedGastoUsd, activeCurrencyConfig)}
+                </div>
+              </div>
+              <span className="text-[10px] font-mono text-gray-500">Suma Meta Ads</span>
             </div>
           </div>
         </div>
 
-        {/* HERO NUMBER CARD — AHORRO SUGERIDO DE HOY */}
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch mt-6">
+        {/* NUEVO DESGLOSE DE 4 CASILLAS INDIVIDUALES */}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           
-          {/* Main Hero Highlight Column */}
-          <div className="lg:col-span-6 bg-gradient-to-br from-[#182338] to-[#121929] rounded-xl p-6 border border-emerald-500/30 shadow-xl flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/50 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                <PiggyBank className="w-4 h-4 text-emerald-400 animate-bounce" /> AHORRO SUGERIDO DE HOY ({activeCurrencyConfig.code})
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                30% Utilidad
-              </span>
-            </div>
-
-            <div className="my-2">
-              <div className="text-4xl sm:text-5xl lg:text-6xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 tracking-tight">
-                {formatConvertedMoney(todayAhorroSugeridoUsd, activeCurrencyConfig)}
-              </div>
-              <p className="text-xs text-gray-400 font-mono mt-2 flex items-center gap-1.5">
-                <span>
-                  {activeCurrencyConfig.code === 'USD'
-                    ? 'Reflejo en tiempo real de las ventas registradas hoy en Dólares.'
-                    : `Convertido de USD a ${activeCurrencyConfig.code} (Tasa: ${activeCurrencyConfig.rate})`}
+          {/* 1. UTILIDAD TOTAL DEL DÍA — VERDE CLARO */}
+          <div className="bg-gradient-to-br from-[#0c2419] to-[#081a12] rounded-xl p-5 border border-emerald-500/40 shadow-lg flex flex-col justify-between group hover:border-emerald-400 transition-all">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-emerald-400" /> UTILIDAD TOTAL
                 </span>
-              </p>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                  Verde Claro
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-display font-black text-emerald-300 tracking-tight my-1">
+                {formatConvertedMoney(selectedUtilidadUsd, activeCurrencyConfig)}
+              </div>
             </div>
-
-            <div className="mt-4 pt-3 border-t border-[#252f4a] flex items-center justify-between text-xs font-mono text-gray-400">
-              <span>Estado del cálculo:</span>
-              <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                ● Calculado al vuelo
-              </span>
+            <div className="mt-4 pt-2 border-t border-emerald-900/50 flex items-center justify-between text-[11px] font-mono text-emerald-400/80">
+              <span>Fórmula:</span>
+              <span className="font-semibold text-emerald-300">Ingresos − Gasto</span>
             </div>
           </div>
 
-          {/* Supporting Stats Cards (Ingresos, Gasto, Utilidad) */}
-          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            
-            {/* Ingresos de hoy */}
-            <div className="bg-[#141827] rounded-xl p-4 border border-[#23293f] flex flex-col justify-between hover:border-[#353d5e] transition-all">
-              <div>
-                <div className="flex items-center justify-between text-gray-400 mb-2">
-                  <span className="text-[11px] font-mono font-medium">Ingresos ({activeCurrencyConfig.code})</span>
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
-                    <ArrowUpRight className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-xl sm:text-2xl font-bold font-display text-white">
-                  {formatConvertedMoney(todayIngresosUsd, activeCurrencyConfig)}
-                </div>
+          {/* 2. AHORRO (30%) — ROJO */}
+          <div className="bg-gradient-to-br from-[#2a1217] to-[#1d0b0f] rounded-xl p-5 border border-rose-500/40 shadow-lg flex flex-col justify-between group hover:border-rose-400 transition-all">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <PiggyBank className="w-4 h-4 text-rose-400" /> AHORRO (30%)
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                  Rojo
+                </span>
               </div>
-              <p className="text-[10px] font-mono text-gray-500 mt-3">SUMA de ventas.monto_usd</p>
-            </div>
-
-            {/* Gasto de hoy */}
-            <div className="bg-[#141827] rounded-xl p-4 border border-[#23293f] flex flex-col justify-between hover:border-[#353d5e] transition-all">
-              <div>
-                <div className="flex items-center justify-between text-gray-400 mb-2">
-                  <span className="text-[11px] font-mono font-medium">Gasto ({activeCurrencyConfig.code})</span>
-                  <div className="w-7 h-7 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400">
-                    <ArrowDownRight className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-xl sm:text-2xl font-bold font-display text-rose-400">
-                  {formatConvertedMoney(todayGastoUsd, activeCurrencyConfig)}
-                </div>
+              <div className="text-2xl sm:text-3xl font-display font-black text-rose-400 tracking-tight my-1">
+                {formatConvertedMoney(selectedAhorroUsd, activeCurrencyConfig)}
               </div>
-              <p className="text-[10px] font-mono text-gray-500 mt-3">SUMA de campanas_meta.gasto</p>
             </div>
+            <div className="mt-4 pt-2 border-t border-rose-900/50 flex items-center justify-between text-[11px] font-mono text-rose-400/80">
+              <span>Fórmula:</span>
+              <span className="font-semibold text-rose-300">Utilidad × 30%</span>
+            </div>
+          </div>
 
-            {/* Utilidad de hoy */}
-            <div className="bg-[#141827] rounded-xl p-4 border border-[#23293f] flex flex-col justify-between hover:border-[#353d5e] transition-all">
-              <div>
-                <div className="flex items-center justify-between text-gray-400 mb-2">
-                  <span className="text-[11px] font-mono font-medium">Utilidad ({activeCurrencyConfig.code})</span>
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${todayUtilidadUsd >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                    {todayUtilidadUsd >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                  </div>
-                </div>
-                <div className={`text-xl sm:text-2xl font-bold font-display ${todayUtilidadUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {formatConvertedMoney(todayUtilidadUsd, activeCurrencyConfig)}
-                </div>
+          {/* 3. CAPITAL NEGOCIO (50%) — VERDE OSCURO */}
+          <div className="bg-gradient-to-br from-[#06180e] to-[#041009] rounded-xl p-5 border border-emerald-700/60 shadow-lg flex flex-col justify-between group hover:border-emerald-600 transition-all">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-emerald-500" /> CAPITAL NEGOCIO
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 font-bold border border-emerald-800">
+                  Verde Oscuro
+                </span>
               </div>
-              <p className="text-[10px] font-mono text-gray-500 mt-3">Ingresos − Gasto Meta</p>
+              <div className="text-2xl sm:text-3xl font-display font-black text-emerald-500 tracking-tight my-1">
+                {formatConvertedMoney(selectedCapitalUsd, activeCurrencyConfig)}
+              </div>
             </div>
+            <div className="mt-4 pt-2 border-t border-emerald-950 flex items-center justify-between text-[11px] font-mono text-emerald-600">
+              <span>Fórmula:</span>
+              <span className="font-semibold text-emerald-500">Utilidad × 50%</span>
+            </div>
+          </div>
 
+          {/* 4. HERRAMIENTAS Y SUELDOS (20%) — AZUL */}
+          <div className="bg-gradient-to-br from-[#0d1d33] to-[#081220] rounded-xl p-5 border border-blue-500/40 shadow-lg flex flex-col justify-between group hover:border-blue-400 transition-all">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-blue-400" /> HERRAMIENTAS / SUELDOS
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">
+                  Azul
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-display font-black text-blue-400 tracking-tight my-1">
+                {formatConvertedMoney(selectedHerramientasUsd, activeCurrencyConfig)}
+              </div>
+            </div>
+            <div className="mt-4 pt-2 border-t border-blue-900/50 flex items-center justify-between text-[11px] font-mono text-blue-400/80">
+              <span>Fórmula:</span>
+              <span className="font-semibold text-blue-300">Utilidad × 20%</span>
+            </div>
           </div>
 
         </div>
       </section>
 
-      {/* VISTA 2 — HISTÓRICO: Tabla con selector de fechas y moneda de referencia */}
+      {/* VISTA 2 — HISTÓRICO: Tabla con selector de fechas y 4 columnas nuevas */}
       <section id="vista-2-historico" className="bg-[#11131c] border border-[#1f2335] rounded-2xl p-6 shadow-xl space-y-6">
         
         {/* Section Header + Controls */}
@@ -393,7 +468,7 @@ export default function AccountingDataView({
               <Calendar className="w-5 h-5 text-[#3b82f6]" /> Histórico por Día ({activeCurrencyConfig.code})
             </h3>
             <p className="text-xs text-gray-400 font-mono mt-1">
-              Desglose consolidado diario del rendimiento contable. Ordenado de más reciente a más antiguo por defecto.
+              Desglose consolidado diario del rendimiento y distribución contable. Ordenado de más reciente a más antiguo por defecto.
             </p>
           </div>
 
@@ -401,14 +476,14 @@ export default function AccountingDataView({
             <button
               onClick={handleExportCSV}
               className="px-3 py-1.5 bg-[#1b2032] hover:bg-[#252c46] text-gray-300 hover:text-white border border-[#2d3554] rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-              title="Descargar reporte en formato CSV"
+              title="Descargar reporte en formato CSV con todas las columnas"
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" /> Exportar CSV ({activeCurrencyConfig.code})
             </button>
           </div>
         </div>
 
-        {/* Date Selector Control Bar (Compatible con el resto del dashboard) */}
+        {/* Date Selector Control Bar */}
         <div className="bg-[#151926] border border-[#252b42] rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-mono font-semibold text-gray-400 flex items-center gap-1.5">
@@ -488,29 +563,37 @@ export default function AccountingDataView({
               <tr className="bg-[#161926] text-gray-400 uppercase border-b border-[#1f2335]">
                 <th className="py-3 px-4 font-semibold tracking-wider">Fecha</th>
                 <th className="py-3 px-4 font-semibold tracking-wider text-right">Ingresos ({activeCurrencyConfig.code})</th>
-                <th className="py-3 px-4 font-semibold tracking-wider text-right">Gasto Meta ({activeCurrencyConfig.code})</th>
-                <th className="py-3 px-4 font-semibold tracking-wider text-right">Utilidad ({activeCurrencyConfig.code})</th>
-                <th className="py-3 px-4 font-semibold tracking-wider text-right text-emerald-400">
-                  Ahorro Sugerido 30% ({activeCurrencyConfig.code})
+                <th className="py-3 px-4 font-semibold tracking-wider text-right">Gasto ({activeCurrencyConfig.code})</th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right text-emerald-400 bg-emerald-500/5 border-l border-r border-[#1f2335]">
+                  Utilidad Total ({activeCurrencyConfig.code})
+                </th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right text-rose-400 bg-rose-500/5">
+                  Ahorro (30%) ({activeCurrencyConfig.code})
+                </th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right text-emerald-500 bg-emerald-950/20">
+                  Capital Negocio (50%) ({activeCurrencyConfig.code})
+                </th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right text-blue-400 bg-blue-500/5">
+                  Herramientas y Sueldos (20%) ({activeCurrencyConfig.code})
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1f2335] bg-[#11131c]">
               {historicalDays.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-gray-500">
-                    No hay registros de ventas ni anuncios en el rango seleccionado ({localStartDate} al {localEndDate}).
+                  <td colSpan={7} className="py-8 text-center text-gray-500">
+                    No hay registros en el rango seleccionado ({localStartDate} al {localEndDate}).
                   </td>
                 </tr>
               ) : (
                 historicalDays.map((day) => {
+                  const isSelectedDay = day.dateStr === selectedDate;
                   const isToday = day.dateStr === todayStr;
-                  const isNegativeUtilidad = day.utilidadUsd < 0;
 
                   return (
                     <tr 
                       key={day.dateStr} 
-                      className={`hover:bg-[#161a29] transition-colors ${isToday ? 'bg-[#182136]/50 font-semibold' : ''}`}
+                      className={`hover:bg-[#161a29] transition-colors ${isSelectedDay ? 'bg-[#182136] font-semibold' : ''}`}
                     >
                       <td className="py-3 px-4 text-white flex items-center gap-2">
                         <span>{day.dateStr}</span>
@@ -519,9 +602,14 @@ export default function AccountingDataView({
                             HOY
                           </span>
                         )}
+                        {isSelectedDay && !isToday && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            SELECCIONADO
+                          </span>
+                        )}
                         {day.gastoUsd === 0 && (
-                          <span title="Sin gasto registrado en campanas_meta para este día" className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
-                            Sin Gasto Meta
+                          <span title="Sin gasto registrado en Meta Ads para este día" className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+                            Sin Gasto
                           </span>
                         )}
                       </td>
@@ -531,11 +619,17 @@ export default function AccountingDataView({
                       <td className="py-3 px-4 text-right text-rose-400">
                         {formatConvertedMoney(day.gastoUsd, activeCurrencyConfig)}
                       </td>
-                      <td className={`py-3 px-4 text-right font-semibold ${isNegativeUtilidad ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      <td className={`py-3 px-4 text-right font-semibold border-l border-r border-[#1f2335] ${day.utilidadUsd >= 0 ? 'text-emerald-400 bg-emerald-500/5' : 'text-rose-400'}`}>
                         {formatConvertedMoney(day.utilidadUsd, activeCurrencyConfig)}
                       </td>
-                      <td className="py-3 px-4 text-right text-emerald-300 font-bold bg-emerald-500/5">
-                        {formatConvertedMoney(day.ahorroSugeridoUsd, activeCurrencyConfig)}
+                      <td className="py-3 px-4 text-right text-rose-400 font-bold bg-rose-500/5">
+                        {formatConvertedMoney(day.ahorroUsd, activeCurrencyConfig)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-emerald-500 font-bold bg-emerald-950/20">
+                        {formatConvertedMoney(day.capitalUsd, activeCurrencyConfig)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-blue-400 font-bold bg-blue-500/5">
+                        {formatConvertedMoney(day.herramientasUsd, activeCurrencyConfig)}
                       </td>
                     </tr>
                   );
@@ -543,10 +637,10 @@ export default function AccountingDataView({
               )}
             </tbody>
 
-            {/* TOTAL ROW (Sum of full selected date range converted to reference currency) */}
+            {/* TOTAL ROW */}
             {historicalDays.length > 0 && (
               <tfoot>
-                <tr className="bg-[#181d2e] text-white border-t-2 border-[#3b82f6] font-bold text-sm">
+                <tr className="bg-[#181d2e] text-white border-t-2 border-[#3b82f6] font-bold text-xs sm:text-sm">
                   <td className="py-4 px-4 uppercase tracking-wider font-display flex items-center gap-2">
                     <Wallet className="w-4 h-4 text-emerald-400" /> TOTAL RANGO ({activeCurrencyConfig.code})
                   </td>
@@ -556,11 +650,17 @@ export default function AccountingDataView({
                   <td className="py-4 px-4 text-right font-mono text-rose-400">
                     {formatConvertedMoney(historicalTotalsUsd.gastoUsd, activeCurrencyConfig)}
                   </td>
-                  <td className={`py-4 px-4 text-right font-mono ${historicalTotalsUsd.utilidadUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <td className={`py-4 px-4 text-right font-mono border-l border-r border-[#1f2335] ${historicalTotalsUsd.utilidadUsd >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400'}`}>
                     {formatConvertedMoney(historicalTotalsUsd.utilidadUsd, activeCurrencyConfig)}
                   </td>
-                  <td className="py-4 px-4 text-right font-mono text-emerald-300 bg-emerald-500/10 text-base">
-                    {formatConvertedMoney(historicalTotalsUsd.ahorroSugeridoUsd, activeCurrencyConfig)}
+                  <td className="py-4 px-4 text-right font-mono text-rose-400 bg-rose-500/10">
+                    {formatConvertedMoney(historicalTotalsUsd.ahorroUsd, activeCurrencyConfig)}
+                  </td>
+                  <td className="py-4 px-4 text-right font-mono text-emerald-500 bg-emerald-950/40">
+                    {formatConvertedMoney(historicalTotalsUsd.capitalUsd, activeCurrencyConfig)}
+                  </td>
+                  <td className="py-4 px-4 text-right font-mono text-blue-400 bg-blue-500/10">
+                    {formatConvertedMoney(historicalTotalsUsd.herramientasUsd, activeCurrencyConfig)}
                   </td>
                 </tr>
               </tfoot>
@@ -572,7 +672,7 @@ export default function AccountingDataView({
         <div className="flex items-center gap-2 text-xs font-mono text-gray-500 bg-[#0e111a] p-3 rounded-lg border border-[#1b2032]">
           <HelpCircle className="w-4 h-4 text-gray-400 shrink-0" />
           <span>
-            <strong>Nota Contable:</strong> Todos los valores se recalculan en tiempo real usando la moneda de referencia seleccionada (<strong>{activeCurrencyConfig.code}</strong>, Tasa: {activeCurrencyConfig.rate}). El ahorro sugerido corresponde al 30% de la utilidad del periodo.
+            <strong>Nota Contable:</strong> Todos los valores se recalculan en tiempo real usando la moneda de referencia seleccionada (<strong>{activeCurrencyConfig.code}</strong>, Tasa: {activeCurrencyConfig.rate}). Los fondos tácticos corresponden al 30% Ahorro, 50% Capital Negocio y 20% Herramientas/Sueldos sobre la utilidad positiva.
           </span>
         </div>
 
@@ -581,3 +681,4 @@ export default function AccountingDataView({
     </div>
   );
 }
+
