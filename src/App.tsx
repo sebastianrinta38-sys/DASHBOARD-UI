@@ -1,72 +1,54 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
-import KPICards from './components/KPICards';
-import ChartsSection from './components/ChartsSection';
-import MetaAdsTable from './components/MetaAdsTable';
+import GeneralSummaryView from './components/GeneralSummaryView';
+import CountryDetailView from './components/CountryDetailView';
+import BotsPerformanceView from './components/BotsPerformanceView';
+import MetaAdsView from './components/MetaAdsView';
 import SalesLedger from './components/SalesLedger';
-import BotsSection from './components/BotsSection';
-import AIAdvisor from './components/AIAdvisor';
 import CreateSaleModal from './components/CreateSaleModal';
 import CatalogManagement from './components/CatalogManagement';
 import { Sale, AdCampaign, FilterState, Product } from './types';
-import { INITIAL_SALES, INITIAL_CAMPAIGNS, PRODUCTS, EXCHANGE_RATES } from './data/mockData';
-import { CheckCircle2, AlertTriangle, Info, Sparkles, X, Plus } from 'lucide-react';
+import { useDashboardData } from './hooks/useDashboardData';
+import { CheckCircle2, AlertTriangle, Info, Plus, X, Database } from 'lucide-react';
+
+const normalizeCountry = (str?: string) => {
+  if (!str) return '';
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
 
 export default function App() {
-  // Core application states (loaded with rich default mock data)
-  const [sales, setSales] = useState<Sale[]>(() => {
-    const local = localStorage.getItem('woodads_sales');
-    return local ? JSON.parse(local) : INITIAL_SALES;
-  });
+  // Live dataset and mutations powered by TanStack Query + Supabase / Drizzle
+  const {
+    isLoading,
+    isError,
+    error,
+    refetch,
+    sales,
+    campaigns,
+    products,
+    countriesConfig,
+    rawBots,
+    resumenPorAnuncio,
+    createSale,
+    updateSale,
+    deleteSale,
+    toggleCampaign,
+    bulkCampaignStatus,
+    bulkDeleteCampaigns,
+    saveProduct,
+    updateCountryRate,
+  } = useDashboardData();
 
-  const [campaigns, setCampaigns] = useState<AdCampaign[]>(() => {
-    const local = localStorage.getItem('woodads_campaigns');
-    return local ? JSON.parse(local) : INITIAL_CAMPAIGNS;
-  });
-
-  const [products, setProducts] = useState<Product[]>(() => {
-    const local = localStorage.getItem('woodads_products');
-    return local ? JSON.parse(local) : PRODUCTS;
-  });
-
-  const [countriesConfig, setCountriesConfig] = useState<Record<string, { currency: string; rate: number }>>(() => {
-    const local = localStorage.getItem('woodads_countries_config');
-    return local ? JSON.parse(local) : EXCHANGE_RATES;
-  });
-
-  // Persist states to localStorage for instant subsequent loads
-  useEffect(() => {
-    localStorage.setItem('woodads_sales', JSON.stringify(sales));
-  }, [sales]);
-
-  useEffect(() => {
-    localStorage.setItem('woodads_campaigns', JSON.stringify(campaigns));
-  }, [campaigns]);
-
-  useEffect(() => {
-    localStorage.setItem('woodads_products', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem('woodads_countries_config', JSON.stringify(countriesConfig));
-  }, [countriesConfig]);
-
-  // Active view state
+  // Active view state (Default: 'dashboard' = Nivel 1)
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
-  // Filters State
+  // Filters State - Default covering July 2026 sales
   const [filters, setFilters] = useState<FilterState>({
-    startDate: '2026-06-18', // 30 days range by default
-    endDate: '2026-07-18',
+    startDate: '2026-07-01',
+    endDate: '2026-07-31',
     country: 'All',
-    bot: 'All',
-    product: 'All'
+    bot: 'All'
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,7 +61,6 @@ export default function App() {
     setToast({ message, type, id });
   };
 
-  // Auto clear toast after 3 seconds
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => {
@@ -92,97 +73,44 @@ export default function App() {
   // Reset Filters Handler
   const handleResetFilters = () => {
     setFilters({
-      startDate: '2026-06-18',
-      endDate: '2026-07-18',
+      startDate: '2026-07-01',
+      endDate: '2026-07-31',
       country: 'All',
-      bot: 'All',
-      product: 'All'
+      bot: 'All'
     });
     setSearchQuery('');
-    showToast('Filtros restablecidos al periodo de 30 días.', 'info');
+    showToast('Filtros restablecidos al rango del mes actual.', 'info');
   };
 
   // Modal Control States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
 
-  // Filter computation logic (Memoized for peak TanStack/React performance)
+  // Filter computation logic (Memoized)
   const filteredSales = useMemo(() => {
     return sales.filter(sale => {
       // Date Check
-      if (sale.date < filters.startDate || sale.date > filters.endDate) return false;
+      if (filters.startDate && sale.date < filters.startDate) return false;
+      if (filters.endDate && sale.date > filters.endDate) return false;
       
-      // Country Check
-      if (filters.country !== 'All' && sale.country !== filters.country) return false;
+      // Country Check (Accent normalized)
+      if (filters.country !== 'All' && normalizeCountry(sale.country) !== normalizeCountry(filters.country)) return false;
       
       // Bot Check
       if (filters.bot !== 'All' && sale.bot !== filters.bot) return false;
-      
-      // Product Check
-      if (filters.product !== 'All' && sale.product !== filters.product) return false;
 
       // Search Query
       if (searchQuery.trim() !== '') {
         const query = searchQuery.toLowerCase();
         const matchesName = sale.customerName.toLowerCase().includes(query);
         const matchesPhone = sale.phone.toLowerCase().includes(query);
-        const matchesProduct = sale.product.toLowerCase().includes(query);
         const matchesId = sale.id.toLowerCase().includes(query);
-        return matchesName || matchesPhone || matchesProduct || matchesId;
+        return matchesName || matchesPhone || matchesId;
       }
 
       return true;
     });
   }, [sales, filters, searchQuery]);
-
-  const filteredCampaigns = useMemo(() => {
-    return campaigns.filter(camp => {
-      // Country Check
-      if (filters.country !== 'All' && camp.country !== filters.country && camp.country !== 'Todos') return false;
-
-      // Search Query
-      if (searchQuery.trim() !== '') {
-        const query = searchQuery.toLowerCase();
-        const matchesName = camp.campaignName.toLowerCase().includes(query);
-        const matchesCountry = camp.country.toLowerCase().includes(query);
-        const matchesId = camp.id.toLowerCase().includes(query);
-        return matchesName || matchesCountry || matchesId;
-      }
-
-      return true;
-    });
-  }, [campaigns, filters, searchQuery]);
-
-  // MUTATIONS (Optimistic UI state changes with immediate toast updates)
-
-  // Toggle single Campaign status
-  const handleToggleCampaignStatus = (id: string) => {
-    setCampaigns(prev => prev.map(camp => {
-      if (camp.id === id) {
-        const newStatus = camp.status === 'active' ? 'paused' : 'active';
-        showToast(`Campaña ${camp.campaignName} cambiada a ${newStatus === 'active' ? 'Activa' : 'Pausada'}.`, 'info');
-        return { ...camp, status: newStatus };
-      }
-      return camp;
-    }));
-  };
-
-  // Bulk status update for multi-selection in Meta Ads Table
-  const handleBulkCampaignStatusChange = (ids: string[], newStatus: 'active' | 'paused') => {
-    setCampaigns(prev => prev.map(camp => {
-      if (ids.includes(camp.id)) {
-        return { ...camp, status: newStatus };
-      }
-      return camp;
-    }));
-    showToast(`Estado de ${ids.length} campañas modificado a ${newStatus === 'active' ? 'Activo' : 'Pausado'}.`, 'success');
-  };
-
-  // Bulk delete for multi-selection
-  const handleBulkCampaignDelete = (ids: string[]) => {
-    setCampaigns(prev => prev.filter(camp => !ids.includes(camp.id)));
-    showToast(`${ids.length} campañas eliminadas correctamente.`, 'warning');
-  };
 
   // Open creator modal
   const handleOpenCreateModal = () => {
@@ -197,31 +125,65 @@ export default function App() {
   };
 
   // Delete transaction
-  const handleDeleteSale = (id: string) => {
+  const handleDeleteSale = async (id: string) => {
     const deletedSale = sales.find(s => s.id === id);
-    setSales(prev => prev.filter(s => s.id !== id));
-    showToast(`Venta de ${deletedSale?.customerName || 'Cliente'} eliminada.`, 'warning');
+    try {
+      await deleteSale(id);
+      showToast(`Venta de ${deletedSale?.customerName || 'Cliente'} eliminada de Supabase.`, 'warning');
+    } catch (err: any) {
+      showToast(`Error al eliminar venta: ${err.message}`, 'warning');
+    }
   };
 
   // Submit modal creator or editor
-  const handleSaleFormSubmit = (saleData: Omit<Sale, 'id'>) => {
-    if (editingSale) {
-      // Editing Mode
-      setSales(prev => prev.map(s => {
-        if (s.id === editingSale.id) {
-          return { ...s, ...saleData };
-        }
-        return s;
-      }));
-      showToast(`Venta de ${saleData.customerName} actualizada con éxito.`);
-    } else {
-      // Create Mode (Optimistic addition)
-      const newSale: Sale = {
-        id: `SALE-${Math.floor(10000 + Math.random() * 90000)}`,
-        ...saleData
-      };
-      setSales(prev => [newSale, ...prev]);
-      showToast(`Venta registrada: ${saleData.customerName} por ${saleData.amountLocal.toLocaleString()} ${saleData.currency}.`);
+  const handleSaleFormSubmit = async (saleData: Omit<Sale, 'id'>) => {
+    try {
+      if (editingSale) {
+        await updateSale({
+          id: editingSale.id,
+          data: {
+            clienteNombre: saleData.customerName,
+            clienteTelefono: saleData.phone,
+            productoId: saleData.productoId,
+            paisId: saleData.paisId,
+            botId: saleData.botId,
+            montoLocal: saleData.amountLocal,
+            montoUsd: saleData.amountUsd,
+            moneda: saleData.currency,
+            fecha: saleData.date,
+            tipoVenta: saleData.tipoVenta,
+            diaSemana: saleData.diaSemana,
+            hora: saleData.hora,
+            banco: saleData.banco,
+            idAnuncio: saleData.idAnuncio,
+            linkMedia: saleData.linkMedia,
+            linkSource: saleData.linkSource,
+          }
+        });
+        showToast(`Venta de ${saleData.customerName} actualizada en Supabase con éxito.`);
+      } else {
+        await createSale({
+          clienteNombre: saleData.customerName,
+          clienteTelefono: saleData.phone,
+          productoId: saleData.productoId!,
+          paisId: saleData.paisId!,
+          botId: saleData.botId,
+          montoLocal: saleData.amountLocal,
+          montoUsd: saleData.amountUsd,
+          moneda: saleData.currency,
+          fecha: saleData.date,
+          tipoVenta: saleData.tipoVenta,
+          diaSemana: saleData.diaSemana,
+          hora: saleData.hora,
+          banco: saleData.banco,
+          idAnuncio: saleData.idAnuncio,
+          linkMedia: saleData.linkMedia,
+          linkSource: saleData.linkSource,
+        });
+        showToast(`Venta guardada en Supabase: ${saleData.customerName} por ${saleData.amountLocal.toLocaleString()} ${saleData.currency}.`);
+      }
+    } catch (err: any) {
+      showToast(`Error guardando venta: ${err.message}`, 'warning');
     }
   };
 
@@ -233,7 +195,7 @@ export default function App() {
       {/* Main Layout Container */}
       <main className="flex-1 pl-64 min-h-screen flex flex-col">
         
-        {/* Global sticky/floating notification toast */}
+        {/* Global sticky notification toast */}
         {toast && (
           <div 
             id="toast-notification"
@@ -266,26 +228,33 @@ export default function App() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#1f2335]">
             <div>
               <h2 className="text-2xl font-display font-bold text-white tracking-tight flex items-center gap-2">
-                {activeTab === 'dashboard' && 'Resumen Ejecutivo Multipaís'}
-                {activeTab === 'ads' && 'Monitoreo de Meta Ads'}
-                {activeTab === 'bots' && 'Embudo de Bots WhatsApp'}
-                {activeTab === 'ledger' && 'Libro de Ventas Reales'}
-                {activeTab === 'advisor' && 'Recomendaciones Estratégicas de IA'}
-                {activeTab === 'catalog' && 'Gestión de Catálogo e Integraciones'}
+                {activeTab === 'dashboard' && 'Nivel 1 — Resumen General Consolidado'}
+                {activeTab === 'country' && 'Nivel 2 — Detalle por País'}
+                {activeTab === 'bots' && 'Nivel 3 — Rendimiento de Bots Leona'}
+                {activeTab === 'ledger' && 'Registro General de Ventas'}
+                {activeTab === 'catalog' && 'Gestión de Países y Conversiones'}
               </h2>
-              <p className="text-xs text-gray-400 font-mono mt-1">
-                {activeTab === 'dashboard' && 'Visión unificada de ventas y retornos publicitarios (ROAS)'}
-                {activeTab === 'ads' && 'Campañas activas, costes de adquisición y decisiones presupuestarias'}
-                {activeTab === 'bots' && 'Monitoreo de conversiones de leads a clientes en tus flujos automatizados'}
-                {activeTab === 'ledger' && 'Historial de pagos conciliados y ventas manuales registradas'}
-                {activeTab === 'advisor' && 'Directrices técnicas impulsadas por Gemini para escalar o pausar campañas'}
-                {activeTab === 'catalog' && 'Administración dinámica de tus infoproductos activos y conversiones cambiarias'}
+              <p className="text-xs text-gray-400 font-mono mt-1 flex items-center gap-2">
+                <span>
+                  {activeTab === 'dashboard' && 'Visión unificada de facturación y métricas globales en USD'}
+                  {activeTab === 'country' && 'Análisis en moneda local y desglose aislado por tipo de venta'}
+                  {activeTab === 'bots' && 'Comparativa de conversión y ventas por país via Bot Leona'}
+                  {activeTab === 'ledger' && 'Historial trazable de pagos y clientes de WhatsApp'}
+                  {activeTab === 'catalog' && 'Configuración de tasas de cambio por país'}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                  <Database className="w-3 h-3" /> Supabase Live
+                </span>
               </p>
             </div>
 
             {/* Quick manual log trigger */}
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 font-mono hidden md:inline">JULIO 18, 2026</span>
+              {isLoading && (
+                <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span> Sincronizando...
+                </span>
+              )}
               <button
                 onClick={handleOpenCreateModal}
                 className="px-3.5 py-1.5 bg-[#1f2335] hover:bg-[#2d3450] text-[#3b82f6] hover:text-white border border-[#3b82f6]/30 hover:border-[#3b82f6] rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
@@ -302,97 +271,74 @@ export default function App() {
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             onResetFilters={handleResetFilters}
-            products={products}
             countriesConfig={countriesConfig}
+            botsList={rawBots}
           />
 
           {/* RENDER ACTIVE TAB PANELS */}
 
-          {/* 1. Dashboard Overview */}
+          {/* NIVEL 1 — Resumen General (Moneda de Referencia USD/COP/MXN/etc) */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-6 animate-fade-in">
-              {/* KPIs Section */}
-              <KPICards 
-                sales={filteredSales} 
-                campaigns={filteredCampaigns} 
-                activeCountry={filters.country} 
-                countriesConfig={countriesConfig}
-              />
-
-              {/* Recharts Graphics */}
-              <ChartsSection sales={filteredSales} campaigns={filteredCampaigns} />
-
-              {/* Core campaigns table */}
-              <MetaAdsTable 
-                campaigns={filteredCampaigns} 
-                sales={filteredSales}
-                onToggleStatus={handleToggleCampaignStatus}
-                onBulkStatusChange={handleBulkCampaignStatusChange}
-                onBulkDelete={handleBulkCampaignDelete}
-              />
-            </div>
+            <GeneralSummaryView 
+              sales={filteredSales} 
+              allSales={sales}
+              startDate={filters.startDate}
+              endDate={filters.endDate}
+              countriesConfig={countriesConfig}
+              onRefetch={refetch}
+            />
           )}
 
-          {/* 2. Stand-alone Meta Ads list */}
-          {activeTab === 'ads' && (
-            <div className="animate-fade-in">
-              <KPICards 
-                sales={filteredSales} 
-                campaigns={filteredCampaigns} 
-                activeCountry={filters.country} 
-                countriesConfig={countriesConfig}
-              />
-              <MetaAdsTable 
-                campaigns={filteredCampaigns} 
-                sales={filteredSales}
-                onToggleStatus={handleToggleCampaignStatus}
-                onBulkStatusChange={handleBulkCampaignStatusChange}
-                onBulkDelete={handleBulkCampaignDelete}
-              />
-            </div>
+          {/* NIVEL 2 — Detalle por País (Moneda Local) */}
+          {activeTab === 'country' && (
+            <CountryDetailView 
+              sales={filteredSales}
+              countriesConfig={countriesConfig}
+              selectedCountry={filters.country}
+              onSelectCountry={(country) => setFilters(prev => ({ ...prev, country }))}
+            />
           )}
 
-          {/* 3. Stand-alone WhatsApp Bots statistics */}
+          {/* NIVEL 3 — Rendimiento Bots Leona */}
           {activeTab === 'bots' && (
-            <div className="animate-fade-in">
-              <BotsSection sales={filteredSales} />
-            </div>
+            <BotsPerformanceView 
+              sales={filteredSales}
+              rawBots={rawBots}
+              countriesConfig={countriesConfig}
+            />
           )}
 
-          {/* 4. Sales transactions ledger with Edit/Delete capabilities */}
+          {/* NIVEL 4 — Meta Ads & ROAS por Anuncio */}
+          {activeTab === 'ads' && (
+            <MetaAdsView 
+              sales={filteredSales}
+              campaigns={campaigns}
+              countriesConfig={countriesConfig}
+              onRefetch={refetch}
+              onShowToast={showToast}
+            />
+          )}
+
+          {/* Registro General de Ventas */}
           {activeTab === 'ledger' && (
-            <div className="animate-fade-in">
-              <SalesLedger 
-                sales={filteredSales}
-                onOpenCreateModal={handleOpenCreateModal}
-                onEditSale={handleOpenEditModal}
-                onDeleteSale={handleDeleteSale}
-              />
-            </div>
+            <SalesLedger 
+              sales={filteredSales}
+              onOpenCreateModal={handleOpenCreateModal}
+              onEditSale={handleOpenEditModal}
+              onDeleteSale={handleDeleteSale}
+            />
           )}
 
-          {/* 5. Gemini AI Advisor panel */}
-          {activeTab === 'advisor' && (
-            <div className="animate-fade-in">
-              <AIAdvisor 
-                campaigns={filteredCampaigns} 
-                sales={filteredSales} 
-                activeCountry={filters.country} 
-              />
-            </div>
-          )}
-
-          {/* 6. Dynamic Catalog Management */}
+          {/* Gestión de Catálogo y Países */}
           {activeTab === 'catalog' && (
-            <div className="animate-fade-in">
-              <CatalogManagement 
-                products={products}
-                setProducts={setProducts}
-                countriesConfig={countriesConfig}
-                setCountriesConfig={setCountriesConfig}
-                onShowToast={showToast}
-              />
-            </div>
+            <CatalogManagement 
+              products={products}
+              onSaveProduct={saveProduct}
+              countriesConfig={countriesConfig}
+              onUpdateCountryRate={updateCountryRate}
+              onShowToast={showToast}
+              onRefreshData={refetch}
+            />
           )}
 
         </div>
@@ -400,9 +346,9 @@ export default function App() {
         {/* Global Footer */}
         <footer className="py-6 px-8 border-t border-[#1f2335] bg-[#0c0d12] mt-auto">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-mono text-gray-500">
-            <span>Dashboard de Ventas y Anuncios · Hecho para Sebastián · 2026</span>
+            <span>Dashboard de Ventas y Anuncios · Conectado a Supabase Real Data</span>
             <div className="flex items-center gap-3">
-              <span>ESTADO DE SISTEMAS: <strong className="text-emerald-400">● ÓPTIMO</strong></span>
+              <span>BASE DE DATOS: <strong className="text-emerald-400">● CONECTADA (SUPABASE)</strong></span>
               <span>·</span>
               <span>CRM WHATSAPP: <strong className="text-emerald-400">● SINCRONIZADO</strong></span>
             </div>
@@ -418,6 +364,7 @@ export default function App() {
         initialSale={editingSale}
         products={products}
         countriesConfig={countriesConfig}
+        botsList={rawBots}
       />
     </div>
   );

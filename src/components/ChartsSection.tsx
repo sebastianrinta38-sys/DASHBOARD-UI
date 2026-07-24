@@ -88,15 +88,20 @@ export default function ChartsSection({ sales, campaigns }: ChartsSectionProps) 
   // Custom tooltips styling for dark dashboard theme
   const customTooltipStyle = {
     contentStyle: {
-      backgroundColor: '#11131c',
-      borderColor: '#2e354f',
+      backgroundColor: '#151926',
+      borderColor: '#2d3450',
       borderRadius: '8px',
       color: '#ffffff',
       fontSize: '12px',
       fontFamily: 'var(--font-mono)'
     },
+    itemStyle: {
+      color: '#ffffff',
+      fontSize: '12px',
+      fontWeight: 600
+    },
     labelStyle: {
-      color: '#8f9bb3',
+      color: '#94a3b8',
       marginBottom: '4px'
     }
   };

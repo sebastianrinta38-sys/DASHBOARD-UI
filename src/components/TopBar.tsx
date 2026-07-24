@@ -4,9 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { Search, RotateCcw, Calendar, Globe, Bot, ShoppingBag, SlidersHorizontal, CalendarDays } from 'lucide-react';
+import { Search, RotateCcw, Calendar, Globe, Bot, ShoppingBag, CalendarDays } from 'lucide-react';
 import { FilterState, Product } from '../types';
-import { BOTS } from '../data/mockData';
 
 interface TopBarProps {
   filters: FilterState;
@@ -14,8 +13,8 @@ interface TopBarProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onResetFilters: () => void;
-  products: Product[];
   countriesConfig: Record<string, { currency: string; rate: number }>;
+  botsList?: Array<{ id?: string; nombre: string }>;
 }
 
 export default function TopBar({
@@ -24,8 +23,8 @@ export default function TopBar({
   searchQuery,
   setSearchQuery,
   onResetFilters,
-  products,
   countriesConfig,
+  botsList = [],
 }: TopBarProps) {
   const [customDays, setCustomDays] = useState<string>('');
 
@@ -37,18 +36,14 @@ export default function TopBar({
     setFilters(prev => ({ ...prev, bot: e.target.value }));
   };
 
-  const handleProductChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFilters(prev => ({ ...prev, product: e.target.value }));
-  };
-
   const handleDateChange = (field: 'startDate' | 'endDate', value: string) => {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
 
   // Pre-sets for quick filters (e.g. today, last 7 days, last 30 days)
   const setQuickDateRange = (days: number) => {
-    const today = new Date('2026-07-18');
-    const start = new Date('2026-07-18');
+    const today = new Date();
+    const start = new Date();
     start.setDate(today.getDate() - days);
     
     setFilters(prev => ({
@@ -60,7 +55,7 @@ export default function TopBar({
   };
 
   const setSpecificDayOffset = (offsetDays: number) => {
-    const targetDate = new Date('2026-07-18');
+    const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - offsetDays);
     const dateStr = targetDate.toISOString().split('T')[0];
     
@@ -71,6 +66,9 @@ export default function TopBar({
     }));
     setCustomDays('');
   };
+
+  // Extract unique bot names dynamically from props
+  const botOptions = Array.from(new Set(botsList.map(b => b.nombre).filter(Boolean)));
 
   return (
     <div id="top-bar-controls" className="bg-[#11131c] border border-[#1f2335] rounded-xl p-5 mb-6 shadow-xl">
@@ -94,59 +92,56 @@ export default function TopBar({
           <button 
             onClick={() => setQuickDateRange(0)}
             className={`px-2.5 py-1 bg-[#1c2132] hover:bg-[#252b42] text-xs font-mono rounded border text-gray-300 transition-colors cursor-pointer ${
-              filters.startDate === '2026-07-18' && filters.endDate === '2026-07-18' ? 'border-[#3b82f6] text-white bg-[#1f2335]' : 'border-[#2d3450]'
+              filters.startDate === new Date().toISOString().split('T')[0] && filters.endDate === new Date().toISOString().split('T')[0] ? 'border-[#3b82f6] text-white bg-[#1f2335]' : 'border-[#2d3450]'
             }`}
           >
             Hoy
           </button>
           <button 
-            onClick={() => setSpecificDayOffset(1)}
-            className={`px-2.5 py-1 bg-[#1c2132] hover:bg-[#252b42] text-xs font-mono rounded border text-gray-300 transition-colors cursor-pointer ${
-              filters.startDate === '2026-07-17' && filters.endDate === '2026-07-17' ? 'border-[#3b82f6] text-white bg-[#1f2335]' : 'border-[#2d3450]'
-            }`}
-          >
-            Ayer
-          </button>
-          <button 
             onClick={() => setQuickDateRange(7)}
-            className={`px-2.5 py-1 bg-[#1c2132] hover:bg-[#252b42] text-xs font-mono rounded border text-gray-300 transition-colors cursor-pointer ${
-              filters.startDate === '2026-07-11' && filters.endDate === '2026-07-18' ? 'border-[#3b82f6] text-white bg-[#1f2335]' : 'border-[#2d3450]'
-            }`}
+            className="px-2.5 py-1 bg-[#1c2132] hover:bg-[#252b42] text-xs font-mono rounded border border-[#2d3450] text-gray-300 transition-colors cursor-pointer"
           >
-            Últimos 7d
+            Últimos 7 días
           </button>
           <button 
             onClick={() => setQuickDateRange(30)}
-            className={`px-2.5 py-1 bg-[#1c2132] hover:bg-[#252b42] text-xs font-mono rounded border text-gray-300 transition-colors cursor-pointer ${
-              filters.startDate === '2026-06-18' && filters.endDate === '2026-07-18' ? 'border-[#3b82f6] text-white bg-[#1f2335]' : 'border-[#2d3450]'
-            }`}
+            className="px-2.5 py-1 bg-[#1c2132] hover:bg-[#252b42] text-xs font-mono rounded border border-[#2d3450] text-gray-300 transition-colors cursor-pointer"
           >
-            Últimos 30d
+            Últimos 30 días
           </button>
 
-          {/* Custom range in days */}
+          <div className="h-4 w-px bg-[#1f2335] hidden sm:block mx-1"></div>
+
+          {/* Specific offset buttons */}
+          <button 
+            onClick={() => setSpecificDayOffset(1)}
+            className="px-2 py-1 bg-[#151926] hover:bg-[#1f2335] text-[11px] font-mono rounded border border-[#252b42] text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            Ayer
+          </button>
+
+          {/* Custom N days selector */}
           <div className="flex items-center gap-1 bg-[#151926] border border-[#252b42] rounded px-2 py-0.5">
-            <span className="text-[9px] text-gray-400 font-mono uppercase">Rango:</span>
+            <span className="text-[9px] text-gray-400 font-mono uppercase">Hace</span>
             <input 
               type="number"
               min="1"
-              max="180"
-              placeholder="Días"
+              max="365"
+              placeholder="N"
               value={customDays}
               onChange={(e) => {
                 const val = e.target.value;
                 setCustomDays(val);
-                const num = parseInt(val, 10);
-                if (!isNaN(num) && num > 0) {
-                  setQuickDateRange(num);
+                if (val && !isNaN(Number(val))) {
+                  setSpecificDayOffset(Number(val));
                 }
               }}
-              className="w-10 bg-transparent text-white text-xs font-mono font-bold focus:outline-none"
+              className="w-8 bg-transparent text-white text-xs font-mono focus:outline-none text-center"
             />
-            <span className="text-[9px] text-gray-500 font-mono">d</span>
+            <span className="text-[9px] text-gray-400 font-mono uppercase">días</span>
           </div>
 
-          {/* Specific day date picker */}
+          {/* Date picker for single specific day */}
           <div className="flex items-center gap-1.5 bg-[#151926] border border-[#252b42] rounded px-2 py-0.5">
             <CalendarDays className="w-3 h-3 text-[#3b82f6]" />
             <span className="text-[9px] text-gray-400 font-mono uppercase">Día específico:</span>
@@ -212,25 +207,8 @@ export default function TopBar({
             className="w-full bg-[#151926] border border-[#252b42] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#3b82f6] appearance-none cursor-pointer"
           >
             <option value="All">Todos los Bots</option>
-            {BOTS.map(bot => (
+            {botOptions.map(bot => (
               <option key={bot} value={bot}>{bot}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Product Filter */}
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-mono tracking-wider text-gray-400 flex items-center gap-1 uppercase">
-            <ShoppingBag className="w-3 h-3 text-[#3b82f6]" /> Infoproducto
-          </label>
-          <select
-            value={filters.product}
-            onChange={handleProductChange}
-            className="w-full bg-[#151926] border border-[#252b42] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#3b82f6] appearance-none cursor-pointer"
-          >
-            <option value="All">Todos los Productos</option>
-            {products.map(p => (
-              <option key={p.name} value={p.name}>{p.name}</option>
             ))}
           </select>
         </div>
