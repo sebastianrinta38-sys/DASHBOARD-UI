@@ -341,6 +341,7 @@ export default function App() {
               campaigns={campaigns}
               filters={filters}
               setFilters={setFilters}
+              countriesConfig={countriesConfig}
             />
           )}
 

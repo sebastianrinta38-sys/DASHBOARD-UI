@@ -8,7 +8,6 @@ import {
   PiggyBank, 
   TrendingUp, 
   TrendingDown, 
-  DollarSign, 
   Calendar, 
   Download, 
   HelpCircle, 
@@ -16,15 +15,22 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Wallet,
-  ShieldCheck
+  ShieldCheck,
+  Coins
 } from 'lucide-react';
-import { Sale, AdCampaign, FilterState } from '../types';
+import { Sale, AdCampaign, FilterState, CountryConfig } from '../types';
+import { 
+  CURRENCY_OPTIONS, 
+  getActiveCurrencyConfig, 
+  formatConvertedMoney 
+} from '../lib/currency';
 
 interface AccountingDataViewProps {
   sales: Sale[];
   campaigns: AdCampaign[];
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+  countriesConfig?: Record<string, CountryConfig>;
 }
 
 const normalizeDateStr = (rawDate?: string): string => {
@@ -32,21 +38,21 @@ const normalizeDateStr = (rawDate?: string): string => {
   return rawDate.slice(0, 10);
 };
 
-const formatUSD = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-};
-
 export default function AccountingDataView({
   sales,
   campaigns,
   filters,
   setFilters,
+  countriesConfig = {},
 }: AccountingDataViewProps) {
+  // Selected Reference Currency state (default: USD)
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
+
+  // Active currency metadata and conversion rate
+  const activeCurrencyConfig = useMemo(() => {
+    return getActiveCurrencyConfig(selectedCurrency, countriesConfig);
+  }, [selectedCurrency, countriesConfig]);
+
   // Local date range state initialized from global filters (defaulting to current month / July 2026)
   const [localStartDate, setLocalStartDate] = useState<string>(filters.startDate || '2026-07-01');
   const [localEndDate, setLocalEndDate] = useState<string>(filters.endDate || '2026-07-31');
@@ -103,22 +109,19 @@ export default function AccountingDataView({
   }, [campaigns]);
 
   // ==========================================
-  // VISTA 1 — HOY
+  // VISTA 1 — HOY (Valores base en USD)
   // ==========================================
-  const todayIngresos = salesByDateMap.get(todayStr) || 0;
-  const todayGasto = spendByDateMap.get(todayStr) || 0;
-  const todayUtilidad = todayIngresos - todayGasto;
-  const todayAhorroSugerido = Math.max(0, todayUtilidad * 0.30);
+  const todayIngresosUsd = salesByDateMap.get(todayStr) || 0;
+  const todayGastoUsd = spendByDateMap.get(todayStr) || 0;
+  const todayUtilidadUsd = todayIngresosUsd - todayGastoUsd;
+  const todayAhorroSugeridoUsd = Math.max(0, todayUtilidadUsd * 0.30);
 
   // ==========================================
-  // VISTA 2 — HISTÓRICO (Días consolidados)
+  // VISTA 2 — HISTÓRICO (Días consolidados en USD)
   // ==========================================
-
-  // Collect all unique dates between localStartDate and localEndDate, plus any dates with activity
   const historicalDays = useMemo(() => {
     const allDatesSet = new Set<string>();
 
-    // Add dates in date range
     if (localStartDate && localEndDate && localStartDate <= localEndDate) {
       let curr = new Date(`${localStartDate}T00:00:00`);
       const end = new Date(`${localEndDate}T00:00:00`);
@@ -131,23 +134,22 @@ export default function AccountingDataView({
         curr.setDate(curr.getDate() + 1);
       }
     } else {
-      // Fallback: collect all dates present in sales and spend
       salesByDateMap.forEach((_, date) => allDatesSet.add(date));
       spendByDateMap.forEach((_, date) => allDatesSet.add(date));
     }
 
     const rows = Array.from(allDatesSet).map(dateStr => {
-      const ingresos = salesByDateMap.get(dateStr) || 0;
-      const gasto = spendByDateMap.get(dateStr) || 0;
-      const utilidad = ingresos - gasto;
-      const ahorroSugerido = Math.max(0, utilidad * 0.30);
+      const ingresosUsd = salesByDateMap.get(dateStr) || 0;
+      const gastoUsd = spendByDateMap.get(dateStr) || 0;
+      const utilidadUsd = ingresosUsd - gastoUsd;
+      const ahorroSugeridoUsd = Math.max(0, utilidadUsd * 0.30);
 
       return {
         dateStr,
-        ingresos,
-        gasto,
-        utilidad,
-        ahorroSugerido,
+        ingresosUsd,
+        gastoUsd,
+        utilidadUsd,
+        ahorroSugeridoUsd,
       };
     });
 
@@ -157,17 +159,17 @@ export default function AccountingDataView({
     return rows;
   }, [localStartDate, localEndDate, salesByDateMap, spendByDateMap]);
 
-  // Totals for the historical view
-  const historicalTotals = useMemo(() => {
+  // Totals for the historical view in USD
+  const historicalTotalsUsd = useMemo(() => {
     return historicalDays.reduce(
       (acc, day) => {
-        acc.ingresos += day.ingresos;
-        acc.gasto += day.gasto;
-        acc.utilidad += day.utilidad;
-        acc.ahorroSugerido += day.ahorroSugerido;
+        acc.ingresosUsd += day.ingresosUsd;
+        acc.gastoUsd += day.gastoUsd;
+        acc.utilidadUsd += day.utilidadUsd;
+        acc.ahorroSugeridoUsd += day.ahorroSugeridoUsd;
         return acc;
       },
-      { ingresos: 0, gasto: 0, utilidad: 0, ahorroSugerido: 0 }
+      { ingresosUsd: 0, gastoUsd: 0, utilidadUsd: 0, ahorroSugeridoUsd: 0 }
     );
   }, [historicalDays]);
 
@@ -199,28 +201,35 @@ export default function AccountingDataView({
 
   // CSV Export handler
   const handleExportCSV = () => {
-    const headers = ['Fecha', 'Ingresos (USD)', 'Gasto (USD)', 'Utilidad (USD)', 'Ahorro Sugerido 30% (USD)'];
+    const headers = [
+      'Fecha', 
+      `Ingresos (${activeCurrencyConfig.code})`, 
+      `Gasto (${activeCurrencyConfig.code})`, 
+      `Utilidad (${activeCurrencyConfig.code})`, 
+      `Ahorro Sugerido 30% (${activeCurrencyConfig.code})`
+    ];
+
     const rows = historicalDays.map(d => [
       d.dateStr,
-      d.ingresos.toFixed(2),
-      d.gasto.toFixed(2),
-      d.utilidad.toFixed(2),
-      d.ahorroSugerido.toFixed(2),
+      (d.ingresosUsd * activeCurrencyConfig.rate).toFixed(2),
+      (d.gastoUsd * activeCurrencyConfig.rate).toFixed(2),
+      (d.utilidadUsd * activeCurrencyConfig.rate).toFixed(2),
+      (d.ahorroSugeridoUsd * activeCurrencyConfig.rate).toFixed(2),
     ]);
     
     rows.push([
       'TOTALES',
-      historicalTotals.ingresos.toFixed(2),
-      historicalTotals.gasto.toFixed(2),
-      historicalTotals.utilidad.toFixed(2),
-      historicalTotals.ahorroSugerido.toFixed(2),
+      (historicalTotalsUsd.ingresosUsd * activeCurrencyConfig.rate).toFixed(2),
+      (historicalTotalsUsd.gastoUsd * activeCurrencyConfig.rate).toFixed(2),
+      (historicalTotalsUsd.utilidadUsd * activeCurrencyConfig.rate).toFixed(2),
+      (historicalTotalsUsd.ahorroSugeridoUsd * activeCurrencyConfig.rate).toFixed(2),
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `datos_contables_ahorro_${localStartDate}_a_${localEndDate}.csv`);
+    link.setAttribute('download', `datos_contables_${activeCurrencyConfig.code}_${localStartDate}_a_${localEndDate}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -253,12 +262,32 @@ export default function AccountingDataView({
             </p>
           </div>
 
-          {/* Badge indicator */}
-          <div className="flex items-center gap-2 bg-[#1b2034] px-4 py-2 rounded-xl border border-[#2d3654]">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" />
-            <div className="text-left">
-              <p className="text-[10px] font-mono text-gray-400 uppercase">Regla de Reserva</p>
-              <p className="text-xs font-bold text-emerald-400 font-mono">30% de Utilidad Diaria</p>
+          {/* Reference Currency Selector Control */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-[#1b2034] px-3.5 py-2 rounded-xl border border-[#2d3654] shadow-md">
+              <Coins className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-mono text-gray-400 font-semibold uppercase">MONEDA:</span>
+              <select
+                id="accounting-reference-currency-select"
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="bg-transparent text-white text-xs font-mono font-bold focus:outline-none cursor-pointer pr-1"
+              >
+                {CURRENCY_OPTIONS.map(c => (
+                  <option key={c.code} value={c.code} className="bg-[#11131c] text-white">
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Badge indicator */}
+            <div className="hidden sm:flex items-center gap-2 bg-[#1b2034] px-4 py-2 rounded-xl border border-[#2d3654]">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <div className="text-left">
+                <p className="text-[10px] font-mono text-gray-400 uppercase">Regla de Reserva</p>
+                <p className="text-xs font-bold text-emerald-400 font-mono">30% de Utilidad Diaria</p>
+              </div>
             </div>
           </div>
         </div>
@@ -270,7 +299,7 @@ export default function AccountingDataView({
           <div className="lg:col-span-6 bg-gradient-to-br from-[#182338] to-[#121929] rounded-xl p-6 border border-emerald-500/30 shadow-xl flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/50 transition-all">
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                <PiggyBank className="w-4 h-4 text-emerald-400 animate-bounce" /> AHORRO SUGERIDO DE HOY
+                <PiggyBank className="w-4 h-4 text-emerald-400 animate-bounce" /> AHORRO SUGERIDO DE HOY ({activeCurrencyConfig.code})
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                 30% Utilidad
@@ -279,10 +308,14 @@ export default function AccountingDataView({
 
             <div className="my-2">
               <div className="text-4xl sm:text-5xl lg:text-6xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 tracking-tight">
-                {formatUSD(todayAhorroSugerido)}
+                {formatConvertedMoney(todayAhorroSugeridoUsd, activeCurrencyConfig)}
               </div>
               <p className="text-xs text-gray-400 font-mono mt-2 flex items-center gap-1.5">
-                <span>Reflejo en tiempo real de las ventas registradas hoy.</span>
+                <span>
+                  {activeCurrencyConfig.code === 'USD'
+                    ? 'Reflejo en tiempo real de las ventas registradas hoy en Dólares.'
+                    : `Convertido de USD a ${activeCurrencyConfig.code} (Tasa: ${activeCurrencyConfig.rate})`}
+                </span>
               </p>
             </div>
 
@@ -301,13 +334,13 @@ export default function AccountingDataView({
             <div className="bg-[#141827] rounded-xl p-4 border border-[#23293f] flex flex-col justify-between hover:border-[#353d5e] transition-all">
               <div>
                 <div className="flex items-center justify-between text-gray-400 mb-2">
-                  <span className="text-[11px] font-mono font-medium">Ingresos de Hoy</span>
+                  <span className="text-[11px] font-mono font-medium">Ingresos ({activeCurrencyConfig.code})</span>
                   <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
                     <ArrowUpRight className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-xl sm:text-2xl font-bold font-display text-white">
-                  {formatUSD(todayIngresos)}
+                  {formatConvertedMoney(todayIngresosUsd, activeCurrencyConfig)}
                 </div>
               </div>
               <p className="text-[10px] font-mono text-gray-500 mt-3">SUMA de ventas.monto_usd</p>
@@ -317,13 +350,13 @@ export default function AccountingDataView({
             <div className="bg-[#141827] rounded-xl p-4 border border-[#23293f] flex flex-col justify-between hover:border-[#353d5e] transition-all">
               <div>
                 <div className="flex items-center justify-between text-gray-400 mb-2">
-                  <span className="text-[11px] font-mono font-medium">Gasto de Hoy</span>
+                  <span className="text-[11px] font-mono font-medium">Gasto ({activeCurrencyConfig.code})</span>
                   <div className="w-7 h-7 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400">
                     <ArrowDownRight className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-xl sm:text-2xl font-bold font-display text-rose-400">
-                  {formatUSD(todayGasto)}
+                  {formatConvertedMoney(todayGastoUsd, activeCurrencyConfig)}
                 </div>
               </div>
               <p className="text-[10px] font-mono text-gray-500 mt-3">SUMA de campanas_meta.gasto</p>
@@ -333,13 +366,13 @@ export default function AccountingDataView({
             <div className="bg-[#141827] rounded-xl p-4 border border-[#23293f] flex flex-col justify-between hover:border-[#353d5e] transition-all">
               <div>
                 <div className="flex items-center justify-between text-gray-400 mb-2">
-                  <span className="text-[11px] font-mono font-medium">Utilidad de Hoy</span>
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${todayUtilidad >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                    {todayUtilidad >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                  <span className="text-[11px] font-mono font-medium">Utilidad ({activeCurrencyConfig.code})</span>
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${todayUtilidadUsd >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                    {todayUtilidadUsd >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                   </div>
                 </div>
-                <div className={`text-xl sm:text-2xl font-bold font-display ${todayUtilidad >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {formatUSD(todayUtilidad)}
+                <div className={`text-xl sm:text-2xl font-bold font-display ${todayUtilidadUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {formatConvertedMoney(todayUtilidadUsd, activeCurrencyConfig)}
                 </div>
               </div>
               <p className="text-[10px] font-mono text-gray-500 mt-3">Ingresos − Gasto Meta</p>
@@ -350,14 +383,14 @@ export default function AccountingDataView({
         </div>
       </section>
 
-      {/* VISTA 2 — HISTÓRICO: Tabla con selector de fechas */}
+      {/* VISTA 2 — HISTÓRICO: Tabla con selector de fechas y moneda de referencia */}
       <section id="vista-2-historico" className="bg-[#11131c] border border-[#1f2335] rounded-2xl p-6 shadow-xl space-y-6">
         
         {/* Section Header + Controls */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#1f2335]">
           <div>
             <h3 className="text-lg font-display font-bold text-white tracking-tight flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#3b82f6]" /> Histórico por Día y Fila de Total
+              <Calendar className="w-5 h-5 text-[#3b82f6]" /> Histórico por Día ({activeCurrencyConfig.code})
             </h3>
             <p className="text-xs text-gray-400 font-mono mt-1">
               Desglose consolidado diario del rendimiento contable. Ordenado de más reciente a más antiguo por defecto.
@@ -370,7 +403,7 @@ export default function AccountingDataView({
               className="px-3 py-1.5 bg-[#1b2032] hover:bg-[#252c46] text-gray-300 hover:text-white border border-[#2d3554] rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               title="Descargar reporte en formato CSV"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-400" /> Exportar CSV
+              <Download className="w-3.5 h-3.5 text-emerald-400" /> Exportar CSV ({activeCurrencyConfig.code})
             </button>
           </div>
         </div>
@@ -454,11 +487,11 @@ export default function AccountingDataView({
             <thead>
               <tr className="bg-[#161926] text-gray-400 uppercase border-b border-[#1f2335]">
                 <th className="py-3 px-4 font-semibold tracking-wider">Fecha</th>
-                <th className="py-3 px-4 font-semibold tracking-wider text-right">Ingresos (USD)</th>
-                <th className="py-3 px-4 font-semibold tracking-wider text-right">Gasto Meta (USD)</th>
-                <th className="py-3 px-4 font-semibold tracking-wider text-right">Utilidad (USD)</th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right">Ingresos ({activeCurrencyConfig.code})</th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right">Gasto Meta ({activeCurrencyConfig.code})</th>
+                <th className="py-3 px-4 font-semibold tracking-wider text-right">Utilidad ({activeCurrencyConfig.code})</th>
                 <th className="py-3 px-4 font-semibold tracking-wider text-right text-emerald-400">
-                  Ahorro Sugerido (30%)
+                  Ahorro Sugerido 30% ({activeCurrencyConfig.code})
                 </th>
               </tr>
             </thead>
@@ -472,7 +505,7 @@ export default function AccountingDataView({
               ) : (
                 historicalDays.map((day) => {
                   const isToday = day.dateStr === todayStr;
-                  const isNegativeUtilidad = day.utilidad < 0;
+                  const isNegativeUtilidad = day.utilidadUsd < 0;
 
                   return (
                     <tr 
@@ -486,23 +519,23 @@ export default function AccountingDataView({
                             HOY
                           </span>
                         )}
-                        {day.gasto === 0 && (
+                        {day.gastoUsd === 0 && (
                           <span title="Sin gasto registrado en campanas_meta para este día" className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
                             Sin Gasto Meta
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right text-white font-medium">
-                        {formatUSD(day.ingresos)}
+                        {formatConvertedMoney(day.ingresosUsd, activeCurrencyConfig)}
                       </td>
                       <td className="py-3 px-4 text-right text-rose-400">
-                        {formatUSD(day.gasto)}
+                        {formatConvertedMoney(day.gastoUsd, activeCurrencyConfig)}
                       </td>
                       <td className={`py-3 px-4 text-right font-semibold ${isNegativeUtilidad ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {formatUSD(day.utilidad)}
+                        {formatConvertedMoney(day.utilidadUsd, activeCurrencyConfig)}
                       </td>
                       <td className="py-3 px-4 text-right text-emerald-300 font-bold bg-emerald-500/5">
-                        {formatUSD(day.ahorroSugerido)}
+                        {formatConvertedMoney(day.ahorroSugeridoUsd, activeCurrencyConfig)}
                       </td>
                     </tr>
                   );
@@ -510,24 +543,24 @@ export default function AccountingDataView({
               )}
             </tbody>
 
-            {/* TOTAL ROW (Sum of full selected date range) */}
+            {/* TOTAL ROW (Sum of full selected date range converted to reference currency) */}
             {historicalDays.length > 0 && (
               <tfoot>
                 <tr className="bg-[#181d2e] text-white border-t-2 border-[#3b82f6] font-bold text-sm">
                   <td className="py-4 px-4 uppercase tracking-wider font-display flex items-center gap-2">
-                    <Wallet className="w-4 h-4 text-emerald-400" /> TOTAL RANGO SELECCIONADO
+                    <Wallet className="w-4 h-4 text-emerald-400" /> TOTAL RANGO ({activeCurrencyConfig.code})
                   </td>
                   <td className="py-4 px-4 text-right font-mono text-white">
-                    {formatUSD(historicalTotals.ingresos)}
+                    {formatConvertedMoney(historicalTotalsUsd.ingresosUsd, activeCurrencyConfig)}
                   </td>
                   <td className="py-4 px-4 text-right font-mono text-rose-400">
-                    {formatUSD(historicalTotals.gasto)}
+                    {formatConvertedMoney(historicalTotalsUsd.gastoUsd, activeCurrencyConfig)}
                   </td>
-                  <td className={`py-4 px-4 text-right font-mono ${historicalTotals.utilidad >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {formatUSD(historicalTotals.utilidad)}
+                  <td className={`py-4 px-4 text-right font-mono ${historicalTotalsUsd.utilidadUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {formatConvertedMoney(historicalTotalsUsd.utilidadUsd, activeCurrencyConfig)}
                   </td>
                   <td className="py-4 px-4 text-right font-mono text-emerald-300 bg-emerald-500/10 text-base">
-                    {formatUSD(historicalTotals.ahorroSugerido)}
+                    {formatConvertedMoney(historicalTotalsUsd.ahorroSugeridoUsd, activeCurrencyConfig)}
                   </td>
                 </tr>
               </tfoot>
@@ -539,7 +572,7 @@ export default function AccountingDataView({
         <div className="flex items-center gap-2 text-xs font-mono text-gray-500 bg-[#0e111a] p-3 rounded-lg border border-[#1b2032]">
           <HelpCircle className="w-4 h-4 text-gray-400 shrink-0" />
           <span>
-            <strong>Nota Contable:</strong> El ahorro sugerido se calcula dinámicamente al vuelo (30% sobre Utilidad nula o positiva) sin persistir datos adicionales en la base de datos. Si un día no tiene registros publicitaros en Meta, la Utilidad es igual a la totalidad de Ingresos de ese día.
+            <strong>Nota Contable:</strong> Todos los valores se recalculan en tiempo real usando la moneda de referencia seleccionada (<strong>{activeCurrencyConfig.code}</strong>, Tasa: {activeCurrencyConfig.rate}). El ahorro sugerido corresponde al 30% de la utilidad del periodo.
           </span>
         </div>
 
